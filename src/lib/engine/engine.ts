@@ -26,7 +26,7 @@ export function isValidMove(state: GameState, cellIndex: number, playerId: Playe
   if (player.id !== playerId || player.eliminated) return false;
   if (cellIndex < 0 || cellIndex >= state.cells.length) return false;
   const cell = state.cells[cellIndex];
-  if (cell.owner !== null && cell.owner !== playerId) return false;
+  if (cell.owner != null && cell.owner !== playerId) return false;
   return true;
 }
 
@@ -41,8 +41,12 @@ export function applyMove(state: GameState, cellIndex: number, playerId: PlayerI
 
   const { finalCells, waves } = resolveExplosions(newCells, state.cols, state.rows, playerId);
 
+  // Deep clone players to avoid mutating original state
+  const newPlayers = state.players.map(p => ({ ...p }));
+
   const newState: GameState = {
     ...state,
+    players: newPlayers,
     cells: finalCells,
     currentPlayerIndex: state.currentPlayerIndex,
     roundNumber: state.roundNumber,
@@ -53,7 +57,7 @@ export function applyMove(state: GameState, cellIndex: number, playerId: PlayerI
   const eliminatedPlayers: PlayerId[] = [];
 
   if (newState.roundNumber > 0) {
-    for (const p of newState.players) {
+    for (const p of newPlayers) {
       if (!p.eliminated && countPlayerOrbs(newState.cells, p.id) === 0) {
         p.eliminated = true;
         eliminatedPlayers.push(p.id);
@@ -81,7 +85,7 @@ function advanceTurn(state: GameState): void {
   const nextIndex = (currentIndex + 1) % activePlayers.length;
   state.currentPlayerIndex = activePlayers[nextIndex];
 
-  if (state.currentPlayerIndex === 0) {
+  if (nextIndex === 0) {
     state.roundNumber += 1;
   }
 }
@@ -101,7 +105,7 @@ export function resolveExplosions(
 
     const exploding: number[] = [];
     for (let i = 0; i < working.length; i++) {
-      if (working[i].count >= getCriticalMass(i, cols, rows) && working[i].owner !== null) {
+      if (working[i].count >= getCriticalMass(i, cols, rows) && working[i].owner != null) {
         exploding.push(i);
       }
     }

@@ -12,6 +12,7 @@ interface CellProps {
   index: number;
   cols: number;
   rows: number;
+  playerIdx: number;
   isPlayable: boolean;
   isExploding: boolean;
   onPlace: (index: number) => void;
@@ -24,6 +25,7 @@ export function Cell({
   index,
   cols,
   rows,
+  playerIdx,
   isPlayable,
   isExploding,
   onPlace,
@@ -31,13 +33,13 @@ export function Cell({
   travelingOrbs,
 }: CellProps) {
   const criticalMass = getCriticalMass(index, cols, rows);
-  const isDanger = cell.count >= criticalMass - 1 && cell.count < criticalMass && cell.owner !== null;
-  const playerIdx = cell.owner ? parseInt(cell.owner.replace('p', '')) % colors.player.length : -1;
-  const playerColor = playerIdx >= 0 ? colors.player[playerIdx] : null;
-  const playerGradient = playerIdx >= 0 ? colors.playerGradients[playerIdx] : null;
+  const isDanger = cell.count >= criticalMass - 1 && cell.count < criticalMass && cell.owner != null;
+  const normalizedPlayerIdx = playerIdx >= 0 ? playerIdx % colors.player.length : -1;
+  const playerColor = normalizedPlayerIdx >= 0 ? colors.player[normalizedPlayerIdx] : null;
+  const playerGradient = normalizedPlayerIdx >= 0 ? colors.playerGradients[normalizedPlayerIdx] : null;
 
   const ownTravelers = travelingOrbs.filter(o => o.toIndex === index);
-  const isOwned = cell.owner !== null;
+  const isOwned = cell.owner != null;
 
   return (
     <motion.button

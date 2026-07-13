@@ -3,14 +3,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { v4 as uuid } from 'uuid';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { ref, set, get, onValue, off } from 'firebase/database';
 import { getFirebaseDb } from '@/lib/firebase/client';
-import { GameState, Wave } from '@/lib/engine';
+import { GameState, Wave, Cell, PlayerId, applyMove, isValidMove } from '@/lib/engine';
 import { Board } from '@/components/board/Board';
 import { GameOver } from '@/components/lobby/GameOver';
 import { colors } from '@/lib/design';
 import { getDefaultBoardSize } from '@/lib/engine/board';
+
+function normalizeCells(cells: { count: number; owner?: string | null }[]) {
+  return cells.map(c => ({ count: c.count ?? 0, owner: c.owner ?? null }));
+}
 
 function PlayerPill({ name, color, glow, isActive, isEliminated, isYou }: {
   name: string; color: string; glow: string; isActive: boolean; isEliminated: boolean; isYou: boolean;
@@ -57,6 +61,10 @@ export default function RoomPage() {
   const [currentWave, setCurrentWave] = useState(0);
   const [animating, setAnimating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [preMoveCells, setPreMoveCells] = useState<Cell[] | null>(null);
+  const [movingPlayerId, setMovingPlayerId] = useState<PlayerId | null>(null);
+  const [clickedIndex, setClickedIndex] = useState(-1);
 
   useEffect(() => {
     const db = getFirebaseDb();
@@ -70,7 +78,9 @@ export default function RoomPage() {
         setLoading(false);
         return;
       }
-      setGameState(snap.val().board_state as GameState);
+      const state = snap.val().board_state as GameState;
+      if (state.cells) state.cells = normalizeCells(state.cells) as any;
+      setGameState(state);
       setLoading(false);
     });
 
@@ -79,8 +89,8 @@ export default function RoomPage() {
       const d = snap.val();
       if (!d?.board_state) return;
       const { _waves, _animating, ...state } = d.board_state;
+      if (state.cells) state.cells = normalizeCells(state.cells) as any;
       setGameState(state as GameState);
-      if (_waves?.length > 0) { setWaves(_waves); setCurrentWave(0); setAnimating(true); }
     });
 
     const stored = localStorage.getItem(`cr_player_${code}`);
@@ -94,6 +104,28 @@ export default function RoomPage() {
     const db = getFirebaseDb();
     if (!db) return;
     setJoining(true);
+
+    // Check if player already exists (by name to prevent duplicates)
+    const existingPlayer = gameState.players.find(p => p.name.toLowerCase() === joiningName.trim().toLowerCase());
+    if (existingPlayer) {
+      setError('A player with this name already exists');
+      setJoining(false);
+      return;
+    }
+
+    // Check if this browser already has a player ID for this room
+    const stored = localStorage.getItem(`cr_player_${code}`);
+    if (stored) {
+      try {
+        const { id: existingId } = JSON.parse(stored);
+        const playerExists = gameState.players.some(p => p.id === existingId);
+        if (playerExists) {
+          setPlayerId(existingId);
+          setJoining(false);
+          return;
+        }
+      } catch { /* ignore parse error */ }
+    }
 
     const id = uuid();
     const idx = gameState.players.length;
@@ -115,36 +147,98 @@ export default function RoomPage() {
     if (!gameState || playerId !== gameState.hostId) return;
     const db = getFirebaseDb();
     if (!db) return;
-    const size = getDefaultBoardSize(gameState.players.length);
-    await set(ref(db, `rooms/${code}/board_state`), {
-      ...gameState, cols: size.cols, rows: size.rows,
-      cells: Array.from({ length: size.cols * size.rows }, () => ({ count: 0, owner: null })),
-      status: 'playing', currentPlayerIndex: 0, roundNumber: 0,
-    });
+
+    // Read fresh state from Firebase to avoid race conditions
+    try {
+      const roomRef = ref(db, `rooms/${code}/board_state`);
+      const snap = await get(roomRef);
+      if (!snap.exists()) { setError('Room not found'); return; }
+      const freshState = snap.val() as GameState;
+
+      // Verify we're still the host and game hasn't started
+      if (freshState.status !== 'lobby') { setError('Game already started'); return; }
+      if (freshState.hostId !== playerId) { setError('Not the host'); return; }
+      if (freshState.players.length < 2) { setError('Need at least 2 players'); return; }
+
+      const size = getDefaultBoardSize(freshState.players.length);
+      await set(roomRef, {
+        ...freshState, cols: size.cols, rows: size.rows,
+        cells: Array.from({ length: size.cols * size.rows }, () => ({ count: 0, owner: null })),
+        status: 'playing', currentPlayerIndex: 0, roundNumber: 0,
+      });
+    } catch (err) {
+      console.error('Failed to start game:', err);
+      setError('Failed to start game');
+    }
   };
 
   const handlePlace = async (cellIndex: number) => {
-    if (!gameState || !playerId || animating) return;
+    if (!gameState || !playerId || submitting) return;
     const cp = gameState.players[gameState.currentPlayerIndex];
     if (cp.id !== playerId) return;
+    if (!isValidMove(gameState, cellIndex, playerId)) {
+      setError('Invalid move');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
 
-    const res = await fetch('/api/moves', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomCode: code, playerId, cellIndex }),
-    });
-    if (!res.ok) { console.error('Move failed:', (await res.json()).error); return; }
-    const data = await res.json();
-    if (data.waves?.length > 0) { setWaves(data.waves); setCurrentWave(0); setAnimating(true); }
+    // Save pre-move state for animation
+    setPreMoveCells(gameState.cells);
+    setMovingPlayerId(playerId);
+    setClickedIndex(cellIndex);
+
+    // Optimistic update: apply move locally for instant feedback
+    const result = applyMove(gameState, cellIndex, playerId);
+    setGameState(result.state);
+    if (result.waves.length > 0) { setWaves(result.waves); setCurrentWave(0); setAnimating(true); }
+
+    // Send to server in background
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/moves', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomCode: code, playerId, cellIndex }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('Move failed:', errorData);
+        setError(`Move failed: ${errorData.error || 'Unknown error'}`);
+        setTimeout(() => setError(''), 3000);
+        // Re-fetch correct state from Firebase
+        const db = getFirebaseDb();
+        if (db) {
+          const snap = await get(ref(db, `rooms/${code}`));
+          if (snap.exists()) {
+            const s = snap.val().board_state as GameState;
+            if (s.cells) s.cells = normalizeCells(s.cells) as any;
+            setGameState(s);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Move request failed:', err);
+      setError('Network error');
+      setTimeout(() => setError(''), 3000);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const advanceWave = useCallback(() => {
     const n = currentWave + 1;
-    if (n >= waves.length) { setAnimating(false); setCurrentWave(0); setWaves([]); }
-    else setCurrentWave(n);
+    if (n >= waves.length) {
+      setAnimating(false); setCurrentWave(0); setWaves([]);
+      setPreMoveCells(null); setMovingPlayerId(null); setClickedIndex(-1);
+    } else {
+      setCurrentWave(n);
+    }
   }, [currentWave, waves.length]);
 
-  const skipAnimations = () => { setAnimating(false); setCurrentWave(0); setWaves([]); };
+  const skipAnimations = () => {
+    setAnimating(false); setCurrentWave(0); setWaves([]);
+    setPreMoveCells(null); setMovingPlayerId(null); setClickedIndex(-1);
+  };
 
   const handleCopyLink = async () => {
     const url = window.location.href;
@@ -291,8 +385,9 @@ export default function RoomPage() {
 
       <Board cells={gameState.cells} cols={gameState.cols} rows={gameState.rows}
         currentPlayerId={cp?.id || null} players={gameState.players}
-        isPlayable={hasJoined && isMyTurn && gameState.status === 'playing'}
+        isPlayable={hasJoined && isMyTurn && gameState.status === 'playing' && !submitting}
         waves={waves} currentWave={currentWave} animating={animating}
+        preMoveCells={preMoveCells} movingPlayerId={movingPlayerId} clickedIndex={clickedIndex}
         onPlace={handlePlace} onAdvanceWave={advanceWave} onSkipAnimations={skipAnimations} />
 
       {gameState.status === 'finished' && winnerPlayer && (

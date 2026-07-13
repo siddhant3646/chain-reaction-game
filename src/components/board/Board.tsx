@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { Cell as CellType, Wave, Player, PlayerId } from '@/lib/engine';
-import { getNeighborIndices } from '@/lib/engine/board';
+import { getNeighborIndices, getCriticalMass } from '@/lib/engine/board';
 import { Cell } from './Cell';
 import { colors } from '@/lib/design';
 
@@ -17,6 +17,9 @@ interface BoardProps {
   waves: Wave[];
   currentWave: number;
   animating: boolean;
+  preMoveCells: CellType[] | null;
+  movingPlayerId: PlayerId | null;
+  clickedIndex: number;
   onPlace: (cellIndex: number) => void;
   onAdvanceWave: () => void;
   onSkipAnimations: () => void;
@@ -34,9 +37,28 @@ function useReducedMotion() {
   return r;
 }
 
+function computeDisplayCells(
+  baseCells: CellType[],
+  clickedIdx: number,
+  playerId: PlayerId,
+  waves: Wave[],
+  upToWave: number,
+): CellType[] {
+  const cells = baseCells.map(c => ({ ...c }));
+  cells[clickedIdx].count += 1;
+  cells[clickedIdx].owner = playerId;
+  for (let w = 0; w <= upToWave && w < waves.length; w++) {
+    for (const update of waves[w].updates) {
+      cells[update.index] = { count: update.count, owner: update.owner };
+    }
+  }
+  return cells;
+}
+
 export function Board({
   cells, cols, rows, currentPlayerId, players, isPlayable,
-  waves, currentWave, animating, onPlace, onAdvanceWave, onSkipAnimations,
+  waves, currentWave, animating, preMoveCells, movingPlayerId, clickedIndex,
+  onPlace, onAdvanceWave, onSkipAnimations,
 }: BoardProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [cellSize, setCellSize] = useState(36);
@@ -44,6 +66,19 @@ export function Board({
     { fromIndex: number; toIndex: number; color: string; gradient: readonly [string, string] }[]
   >([]);
   const reducedMotion = useReducedMotion();
+
+  // Refs for data needed by the animation effect — prevents timer resets
+  // when Firebase listener updates gameState mid-animation
+  const advanceRef = useRef(onAdvanceWave);
+  advanceRef.current = onAdvanceWave;
+
+  // Compute display cells: intermediate state during animation, final state otherwise
+  const displayCells = useMemo(() => {
+    if (animating && preMoveCells && movingPlayerId && clickedIndex >= 0 && waves.length > 0) {
+      return computeDisplayCells(preMoveCells, clickedIndex, movingPlayerId, waves, currentWave);
+    }
+    return cells;
+  }, [animating, preMoveCells, movingPlayerId, clickedIndex, waves, currentWave, cells]);
 
   const explodingCells = animating && waves[currentWave]
     ? new Set(waves[currentWave].explosions)
@@ -54,18 +89,23 @@ export function Board({
     const wave = waves[currentWave];
     const orbs: typeof travelingOrbs = [];
 
+    // Use movingPlayerId for traveling orb colors — the post-explosion
+    // cell.owner is null for fully exploded cells, so we can't use cells[expIdx].owner
+    const movingIdx = movingPlayerId
+      ? players.findIndex(p => p.id === movingPlayerId)
+      : -1;
+    const ci = movingIdx >= 0 ? movingIdx % colors.player.length : 0;
+    const orbColor = colors.player[ci];
+    const orbGradient = colors.playerGradients[ci];
+
     for (const expIdx of wave.explosions) {
-      const c = cells[expIdx];
-      if (!c.owner) continue;
-      const pi = players.findIndex(p => p.id === c.owner);
-      const ci = pi >= 0 ? pi % colors.player.length : 0;
       const neighbors = getNeighborIndices(expIdx, cols, rows);
       for (const nIdx of neighbors) {
         orbs.push({
           fromIndex: expIdx,
           toIndex: nIdx,
-          color: colors.player[ci],
-          gradient: colors.playerGradients[ci],
+          color: orbColor,
+          gradient: orbGradient,
         });
       }
     }
@@ -73,11 +113,13 @@ export function Board({
 
     const timer = setTimeout(() => {
       setTravelingOrbs([]);
-      onAdvanceWave();
+      advanceRef.current();
     }, reducedMotion.current ? 50 : 320);
 
     return () => clearTimeout(timer);
-  }, [animating, currentWave, waves, cells, cols, rows, players, onAdvanceWave, reducedMotion]);
+    // Only depend on wave-changing values — NOT cells/players (use refs for those)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animating, currentWave, waves, cols, rows, movingPlayerId, reducedMotion]);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -100,7 +142,7 @@ export function Board({
     return () => { ro.disconnect(); window.removeEventListener('resize', update); };
   }, [cols, rows, animating]);
 
-  const handlePlace = useCallback((i: number) => { if (!animating) onPlace(i); }, [animating, onPlace]);
+  const handlePlace = useCallback((i: number) => onPlace(i), [onPlace]);
 
   const gw = cols * cellSize;
   const gh = rows * cellSize;
@@ -141,28 +183,32 @@ export function Board({
           transition: 'width 0.2s ease, height 0.2s ease',
         }}
       >
-        {cells.map((cell, index) => (
-          <div
-            key={index}
-            className="absolute"
-            style={{
-              left: (index % cols) * cellSize,
-              top: Math.floor(index / cols) * cellSize,
-            }}
-          >
-            <Cell
-              cell={cell}
-              index={index}
-              cols={cols}
-              rows={rows}
-              isPlayable={isPlayable && !explodingCells.has(index)}
-              isExploding={explodingCells.has(index)}
-              onPlace={handlePlace}
-              cellSize={cellSize}
-              travelingOrbs={travelingOrbs.filter(o => o.toIndex === index)}
-            />
-          </div>
-        ))}
+        {displayCells.map((cell, index) => {
+          const playerIdx = cell.owner ? players.findIndex(p => p.id === cell.owner) : -1;
+          return (
+            <div
+              key={index}
+              className="absolute"
+              style={{
+                left: (index % cols) * cellSize,
+                top: Math.floor(index / cols) * cellSize,
+              }}
+            >
+              <Cell
+                cell={cell}
+                index={index}
+                cols={cols}
+                rows={rows}
+                playerIdx={playerIdx}
+                isPlayable={isPlayable && !explodingCells.has(index)}
+                isExploding={explodingCells.has(index)}
+                onPlace={handlePlace}
+                cellSize={cellSize}
+                travelingOrbs={travelingOrbs.filter(o => o.toIndex === index)}
+              />
+            </div>
+          );
+        })}
       </motion.div>
     </div>
   );

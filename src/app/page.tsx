@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/design';
@@ -42,6 +43,23 @@ function ParticleField() {
 
 export default function Home() {
   const router = useRouter();
+  const [joinCode, setJoinCode] = useState('');
+  const [joinError, setJoinError] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+
+  const handleJoin = () => {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) {
+      setJoinError('Enter a room code');
+      return;
+    }
+    if (code.length !== 5) {
+      setJoinError('Room code must be 5 characters');
+      return;
+    }
+    setIsJoining(true);
+    router.push(`/room/${code}`);
+  };
 
   return (
     <main className="flex-1 flex flex-col min-h-dvh" style={{ background: colors.background }}>
@@ -88,6 +106,45 @@ export default function Home() {
             />
             <span className="relative z-10">Create Online Room</span>
           </button>
+
+          <div className="relative">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={joinCode}
+                onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinError(''); }}
+                onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                placeholder="Enter room code"
+                maxLength={5}
+                className="flex-1 px-4 py-3 rounded-2xl text-sm outline-none transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${joinError ? 'rgba(255,100,100,0.5)' : 'rgba(255,255,255,0.06)'}`,
+                  color: colors.text,
+                }}
+              />
+              <motion.button
+                onClick={handleJoin}
+                disabled={isJoining}
+                whileTap={{ scale: 0.97 }}
+                className="px-5 py-3 rounded-2xl text-sm font-medium transition-all disabled:opacity-40 whitespace-nowrap"
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  color: colors.text,
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                {isJoining ? 'Joining…' : 'Join Room'}
+              </motion.button>
+            </div>
+            {joinError && (
+              <p className="absolute -bottom-6 left-0 text-xs" style={{ color: colors.player[0] }}>
+                {joinError}
+              </p>
+            )}
+          </div>
+
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent my-1" />
 
           <button
             onClick={() => router.push('/play/local')}

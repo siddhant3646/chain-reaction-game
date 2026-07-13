@@ -42,6 +42,7 @@ export default function LocalPlayPage() {
   const {
     state, config, waves, currentWave, animating,
     eliminatedToast, winner,
+    preMoveCells, movingPlayerId, clickedIndex,
     initGame, placeOrb, advanceWave, skipAnimations, reset,
   } = useLocalGameStore();
 
@@ -139,6 +140,9 @@ export default function LocalPlayPage() {
         waves={waves}
         currentWave={currentWave}
         animating={animating}
+        preMoveCells={preMoveCells}
+        movingPlayerId={movingPlayerId}
+        clickedIndex={clickedIndex}
         onPlace={placeOrb}
         onAdvanceWave={advanceWave}
         onSkipAnimations={skipAnimations}
