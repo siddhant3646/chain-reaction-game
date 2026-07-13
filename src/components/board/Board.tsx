@@ -23,35 +23,27 @@ interface BoardProps {
 }
 
 function useReducedMotion() {
-  const ref = useRef(false);
+  const r = useRef(false);
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    ref.current = mq.matches;
-    const handler = (e: MediaQueryListEvent) => { ref.current = e.matches; };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
+    r.current = mq.matches;
+    const h = (e: MediaQueryListEvent) => { r.current = e.matches; };
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
   }, []);
-  return ref;
+  return r;
 }
 
 export function Board({
-  cells,
-  cols,
-  rows,
-  currentPlayerId,
-  players,
-  isPlayable,
-  waves,
-  currentWave,
-  animating,
-  onPlace,
-  onAdvanceWave,
-  onSkipAnimations,
+  cells, cols, rows, currentPlayerId, players, isPlayable,
+  waves, currentWave, animating, onPlace, onAdvanceWave, onSkipAnimations,
 }: BoardProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [cellSize, setCellSize] = useState(40);
-  const [travelingOrbs, setTravelingOrbs] = useState<{ fromIndex: number; toIndex: number; color: string }[]>([]);
-  const prefersReducedMotion = useReducedMotion();
+  const [cellSize, setCellSize] = useState(36);
+  const [travelingOrbs, setTravelingOrbs] = useState<
+    { fromIndex: number; toIndex: number; color: string; gradient: readonly [string, string] }[]
+  >([]);
+  const reducedMotion = useReducedMotion();
 
   const explodingCells = animating && waves[currentWave]
     ? new Set(waves[currentWave].explosions)
@@ -60,91 +52,93 @@ export function Board({
   useEffect(() => {
     if (!animating || !waves[currentWave]) return;
     const wave = waves[currentWave];
-    const orbs: { fromIndex: number; toIndex: number; color: string }[] = [];
+    const orbs: typeof travelingOrbs = [];
 
     for (const expIdx of wave.explosions) {
-      const cell = cells[expIdx];
-      const owner = cell.owner;
-      if (!owner) continue;
-      const color = colors.player[players.findIndex(p => p.id === owner) % colors.player.length];
+      const c = cells[expIdx];
+      if (!c.owner) continue;
+      const pi = players.findIndex(p => p.id === c.owner);
+      const ci = pi >= 0 ? pi % colors.player.length : 0;
       const neighbors = getNeighborIndices(expIdx, cols, rows);
       for (const nIdx of neighbors) {
-        orbs.push({ fromIndex: expIdx, toIndex: nIdx, color });
+        orbs.push({
+          fromIndex: expIdx,
+          toIndex: nIdx,
+          color: colors.player[ci],
+          gradient: colors.playerGradients[ci],
+        });
       }
     }
     setTravelingOrbs(orbs);
 
-    const delay = prefersReducedMotion.current ? 50 : 350;
     const timer = setTimeout(() => {
       setTravelingOrbs([]);
       onAdvanceWave();
-    }, delay);
+    }, reducedMotion.current ? 50 : 320);
 
     return () => clearTimeout(timer);
-  }, [animating, currentWave, waves, cells, cols, rows, players, onAdvanceWave, prefersReducedMotion]);
+  }, [animating, currentWave, waves, cells, cols, rows, players, onAdvanceWave, reducedMotion]);
 
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
 
-    const updateSize = () => {
+    const update = () => {
       const rect = el.getBoundingClientRect();
-      const padX = 8;
-      const padY = 8;
-
-      const gap = waves.length > 0 && animating ? 80 : 48;
-      const maxW = rect.width - padX * 2;
+      const gap = animating ? 70 : 40;
+      const maxW = rect.width - 4;
       const maxH = window.innerHeight - rect.top - gap;
-
-      const sizeFromW = Math.floor(maxW / cols);
-      const sizeFromH = Math.floor(maxH / rows);
-
-      const clamped = Math.max(28, Math.min(sizeFromW, sizeFromH, 72));
-      setCellSize(clamped);
+      const byW = Math.floor(maxW / cols);
+      const byH = Math.floor(maxH / rows);
+      setCellSize(Math.max(24, Math.min(byW, byH, 72)));
     };
 
-    const ro = new ResizeObserver(updateSize);
+    const ro = new ResizeObserver(update);
     ro.observe(el);
-    updateSize();
+    update();
+    window.addEventListener('resize', update);
+    return () => { ro.disconnect(); window.removeEventListener('resize', update); };
+  }, [cols, rows, animating]);
 
-    window.addEventListener('resize', updateSize);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', updateSize);
-    };
-  }, [cols, rows, animating, waves.length]);
+  const handlePlace = useCallback((i: number) => { if (!animating) onPlace(i); }, [animating, onPlace]);
 
-  const handlePlace = useCallback((index: number) => {
-    if (!animating) onPlace(index);
-  }, [animating, onPlace]);
-
-  const gridWidth = cols * cellSize;
-  const gridHeight = rows * cellSize;
+  const gw = cols * cellSize;
+  const gh = rows * cellSize;
 
   return (
-    <div ref={wrapperRef} className="flex flex-col items-center w-full max-w-full px-1">
+    <div ref={wrapperRef} className="flex flex-col items-center w-full max-w-full px-0.5">
       {animating && (
-        <button
+        <motion.button
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
           onClick={onSkipAnimations}
-          className="mb-2 text-xs px-4 py-1.5 rounded bg-surface-light text-text-muted hover:text-text active:text-text transition-colors touch-manipulation"
+          className="mb-2 text-[11px] font-medium px-4 py-1.5 rounded-full transition-all active:scale-95"
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            color: 'rgba(245,245,247,0.5)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+          }}
         >
-          Skip ({waves.length - currentWave} left)
-        </button>
+          Skip — {waves.length - currentWave} left
+        </motion.button>
       )}
 
-      <div
+      <motion.div
+        layout
         className="relative"
         role="grid"
         aria-label="Game board"
         style={{
-          width: gridWidth,
-          height: gridHeight,
-          maxWidth: '100%',
+          width: gw,
+          height: gh,
+          borderRadius: 6,
           background: `
             linear-gradient(to right, ${colors.gridLine} 1px, transparent 1px),
             linear-gradient(to bottom, ${colors.gridLine} 1px, transparent 1px)
           `,
           backgroundSize: `${cellSize}px ${cellSize}px`,
+          transition: 'width 0.2s ease, height 0.2s ease',
         }}
       >
         {cells.map((cell, index) => (
@@ -162,7 +156,6 @@ export function Board({
               cols={cols}
               rows={rows}
               isPlayable={isPlayable && !explodingCells.has(index)}
-              isCurrentPlayer={cell.owner === currentPlayerId}
               isExploding={explodingCells.has(index)}
               onPlace={handlePlace}
               cellSize={cellSize}
@@ -170,7 +163,7 @@ export function Board({
             />
           </div>
         ))}
-      </div>
+      </motion.div>
     </div>
   );
 }

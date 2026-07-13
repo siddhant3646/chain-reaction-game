@@ -4,30 +4,34 @@ import { motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { colors, fonts } from '@/lib/design';
 
-function BackgroundAnimation() {
+function ParticleField() {
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-      {Array.from({ length: 20 }, (_, i) => (
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          background: `radial-gradient(ellipse at 50% -20%, #1E90FF, transparent 60%)`,
+        }}
+      />
+      {Array.from({ length: 30 }, (_, i) => (
         <motion.div
           key={i}
           className="absolute rounded-full"
           style={{
-            width: 2 + (i % 3) * 2,
-            height: 2 + (i % 3) * 2,
-            left: `${10 + (i * 17) % 80}%`,
-            top: `${20 + (i * 23) % 60}%`,
+            width: 1.5 + (i % 3) * 1.5,
+            height: 1.5 + (i % 3) * 1.5,
+            left: `${5 + (i * 13) % 90}%`,
+            top: `${10 + (i * 19) % 80}%`,
             background: colors.player[i % colors.player.length],
-            opacity: 0.15,
           }}
           animate={{
-            y: [0, -20, 0],
-            opacity: [0.1, 0.3, 0.1],
-            scale: [1, 1.3, 1],
+            y: [0, -30 - (i % 20), 0],
+            opacity: [0.08, 0.25, 0.08],
           }}
           transition={{
-            duration: 3 + (i % 4),
+            duration: 4 + (i % 5),
             repeat: Infinity,
-            delay: i * 0.4,
+            delay: i * 0.3,
             ease: 'easeInOut',
           }}
         />
@@ -40,55 +44,72 @@ export default function Home() {
   const router = useRouter();
 
   return (
-    <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 relative min-h-dvh">
-      <BackgroundAnimation />
+    <main className="flex-1 flex flex-col min-h-dvh" style={{ background: colors.background }}>
+      <ParticleField />
 
-      <div className="flex-1 flex flex-col items-center justify-center w-full">
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
         <motion.div
-          className="text-center mb-8 sm:mb-12"
-          initial={{ opacity: 0, y: 20 }}
+          className="text-center mb-10 sm:mb-14"
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
         >
           <h1
-            className="text-3xl sm:text-4xl md:text-5xl font-display tracking-[0.15em] mb-2 sm:mb-3"
+            className="text-[2.25rem] leading-[1.1] sm:text-5xl md:text-6xl font-semibold tracking-tight mb-3 text-[#f5f5f7]"
             style={{ fontFamily: fonts.display }}
           >
-            CHAIN
+            Chain
             <br />
-            REACTION
+            Reaction
           </h1>
-          <p className="text-text-muted text-xs sm:text-sm max-w-xs mx-auto px-4">
-            Place orbs. Build critical mass. Control the cascade.
+          <p className="text-sm text-[rgba(245,245,247,0.5)] max-w-xs mx-auto leading-relaxed">
+            Place orbs. Build critical mass.
+            <br />
+            Control the cascade.
           </p>
         </motion.div>
 
         <motion.div
-          className="flex flex-col gap-3 sm:gap-4 w-full max-w-xs px-4"
-          initial={{ opacity: 0, y: 20 }}
+          className="flex flex-col gap-3 w-full max-w-[320px]"
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
+          transition={{ duration: 0.7, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
         >
           <button
             onClick={() => router.push('/room/create')}
-            className="w-full py-3.5 sm:py-4 px-6 rounded-lg font-display tracking-wider text-sm bg-white/10 hover:bg-white/20 active:bg-white/25 text-text border border-white/20 transition-all touch-manipulation"
+            className="group relative w-full py-3.5 px-6 rounded-2xl text-sm font-medium text-[#f5f5f7] overflow-hidden transition-all duration-300 active:scale-[0.97]"
+            style={{
+              background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.06) 100%)',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
+            }}
           >
-            Create Online Room
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.08) 100%)' }}
+            />
+            <span className="relative z-10">Create Online Room</span>
           </button>
+
           <button
             onClick={() => router.push('/play/local')}
-            className="w-full py-3.5 sm:py-4 px-6 rounded-lg font-display tracking-wider text-sm bg-white/5 hover:bg-white/15 active:bg-white/20 text-text border border-white/10 transition-all touch-manipulation"
+            className="group relative w-full py-3.5 px-6 rounded-2xl text-sm font-medium text-[rgba(245,245,247,0.6)] overflow-hidden transition-all duration-300 active:scale-[0.97]"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+            }}
           >
-            Play Locally
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              style={{ background: 'rgba(255,255,255,0.06)' }}
+            />
+            <span className="relative z-10">Play Locally</span>
           </button>
         </motion.div>
       </div>
 
       <motion.p
-        className="pb-4 sm:pb-6 text-xs text-text-muted"
+        className="pb-6 text-center text-xs text-[rgba(245,245,247,0.25)]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.6 }}
+        transition={{ duration: 0.7, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
       >
         2–5 players · online or pass-and-play
       </motion.p>

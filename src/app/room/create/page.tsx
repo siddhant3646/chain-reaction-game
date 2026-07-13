@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuid } from 'uuid';
+import { motion } from 'motion/react';
 import { ref, set } from 'firebase/database';
 import { getFirebaseDb } from '@/lib/firebase/client';
 import { generateRoomCode } from '@/lib/engine/board';
@@ -15,27 +16,14 @@ export default function CreateRoomPage() {
   const [error, setError] = useState('');
 
   const createRoom = async () => {
-    if (!name.trim()) {
-      setError('Enter a name');
-      return;
-    }
+    if (!name.trim()) { setError('Enter a name'); return; }
     const db = getFirebaseDb();
-    if (!db) {
-      setError('Firebase not configured — check your env vars');
-      return;
-    }
+    if (!db) { setError('Firebase not configured'); return; }
     setCreating(true);
     setError('');
 
     const playerId = uuid();
     const roomCode = generateRoomCode();
-
-    const newPlayer = {
-      id: playerId,
-      name: name.trim(),
-      color: colors.player[0],
-      eliminated: false,
-    };
 
     try {
       await set(ref(db, `rooms/${roomCode}`), {
@@ -43,7 +31,7 @@ export default function CreateRoomPage() {
           cols: 6,
           rows: 9,
           cells: Array.from({ length: 54 }, () => ({ count: 0, owner: null })),
-          players: [newPlayer],
+          players: [{ id: playerId, name: name.trim(), color: colors.player[0], eliminated: false }],
           currentPlayerIndex: 0,
           roundNumber: 0,
           status: 'lobby',
@@ -53,7 +41,7 @@ export default function CreateRoomPage() {
         created_at: Date.now(),
       });
     } catch {
-      setError('Failed to create room. Try again.');
+      setError('Failed to create room');
       setCreating(false);
       return;
     }
@@ -63,41 +51,78 @@ export default function CreateRoomPage() {
   };
 
   return (
-    <main className="flex-1 flex items-center justify-center p-4 min-h-dvh">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <button onClick={() => router.push('/')} className="text-sm text-text-muted hover:text-text transition-colors inline-block py-2">
-            ← Back
-          </button>
-          <h2 className="text-lg sm:text-xl font-display tracking-wider text-text mt-3 sm:mt-4" style={{ fontFamily: fonts.display }}>
-            Create Room
-          </h2>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs sm:text-sm text-text-muted mb-1.5">Your name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => { setName(e.target.value); setError(''); }}
-              placeholder="Enter your name"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3.5 py-3 sm:py-2.5 text-sm text-text outline-none focus:border-white/30 transition-colors"
-              maxLength={20}
-              onKeyDown={e => e.key === 'Enter' && createRoom()}
-            />
+    <main className="flex-1 flex flex-col min-h-dvh" style={{ background: colors.background }}>
+      <div className="flex-1 flex items-center justify-center p-5">
+        <motion.div
+          className="w-full max-w-sm"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div className="text-center mb-6">
+            <button
+              onClick={() => router.push('/')}
+              className="inline-block py-2 text-sm transition-colors"
+              style={{ color: colors.textMuted }}
+            >
+              ← Back
+            </button>
+            <h2 className="text-lg font-semibold tracking-tight mt-3" style={{ color: colors.text }}>
+              Create Room
+            </h2>
           </div>
 
-          {error && <p className="text-red-400 text-xs">{error}</p>}
-
-          <button
-            onClick={createRoom}
-            disabled={creating}
-            className="w-full py-3.5 sm:py-3 rounded-lg font-display tracking-wider text-sm bg-white/10 hover:bg-white/20 active:bg-white/25 text-text border border-white/20 transition-all disabled:opacity-50 touch-manipulation"
+          <div
+            className="p-6 sm:p-8 rounded-3xl"
+            style={{
+              background: colors.surface,
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: `1px solid ${colors.glassBorder}`,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            }}
           >
-            {creating ? 'Creating...' : 'Create room'}
-          </button>
-        </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: colors.textSecondary }}>
+                  Your name
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={e => { setName(e.target.value); setError(''); }}
+                  placeholder="Enter your name"
+                  className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition-all"
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    color: colors.text,
+                  }}
+                  maxLength={20}
+                  onKeyDown={e => e.key === 'Enter' && createRoom()}
+                />
+              </div>
+
+              {error && (
+                <p className="text-xs" style={{ color: colors.player[0] }}>{error}</p>
+              )}
+
+              <motion.button
+                onClick={createRoom}
+                disabled={creating}
+                className="w-full py-3 rounded-2xl text-sm font-medium transition-all disabled:opacity-40"
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  color: colors.text,
+                  border: `1px solid ${colors.glassBorderHover}`,
+                }}
+              >
+                {creating ? 'Creating…' : 'Create room'}
+              </motion.button>
+            </div>
+          </div>
+        </motion.div>
       </div>
     </main>
   );

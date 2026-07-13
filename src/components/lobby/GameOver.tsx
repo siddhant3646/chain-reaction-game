@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Player } from '@/lib/engine';
 import { colors, fonts } from '@/lib/design';
@@ -14,12 +14,13 @@ interface GameOverProps {
 
 function Confetti({ color }: { color: string }) {
   const [pieces] = useState(() =>
-    Array.from({ length: 30 }, (_, i) => ({
+    Array.from({ length: 24 }, (_, i) => ({
       id: i,
-      x: Math.random() * 100,
-      delay: Math.random() * 2,
-      duration: 2.5 + Math.random() * 2,
-      size: 3 + Math.random() * 5,
+      x: 5 + Math.random() * 90,
+      delay: Math.random() * 1.5,
+      duration: 2 + Math.random() * 2,
+      s: 2 + (i % 4) * 2,
+      r: Math.random() > 0.5 ? '50%' : '1px',
     }))
   );
 
@@ -31,22 +32,22 @@ function Confetti({ color }: { color: string }) {
           className="absolute"
           style={{
             left: `${p.x}%`,
-            top: -10,
-            width: p.size,
-            height: p.size,
+            top: -8,
+            width: p.s,
+            height: p.s * 1.6,
             background: color,
-            borderRadius: p.id % 3 === 0 ? '50%' : '2px',
+            borderRadius: p.r as any,
           }}
           animate={{
             y: [0, typeof window !== 'undefined' ? window.innerHeight + 20 : 800],
-            rotate: [0, 720],
-            opacity: [1, 0.8, 0],
+            rotate: [0, 540 + p.id * 30],
+            opacity: [1, 0.6, 0],
           }}
           transition={{
             duration: p.duration,
             delay: p.delay,
             repeat: Infinity,
-            ease: 'linear',
+            ease: [0.16, 1, 0.3, 1],
           }}
         />
       ))}
@@ -55,44 +56,72 @@ function Confetti({ color }: { color: string }) {
 }
 
 export function GameOver({ winner, players, onRematch, onNewGame }: GameOverProps) {
-  const winnerData = winner ? players.find(p => p.id === winner.id) || winner : null;
-  const winnerColor = winnerData
-    ? colors.player[players.indexOf(winnerData) % colors.player.length]
-    : colors.text;
+  const winnerPlayer = winner ? players.find(p => p.id === winner.id) || winner : null;
+  const wIdx = winnerPlayer ? players.indexOf(winnerPlayer) % colors.player.length : -1;
+  const wColor = wIdx >= 0 ? colors.player[wIdx] : colors.text;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      {winnerData && <Confetti color={winnerColor} />}
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-5" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      {winnerPlayer && <Confetti color={wColor} />}
+
       <motion.div
-        className="bg-surface border border-white/10 rounded-xl p-6 sm:p-8 w-full max-w-sm mx-auto text-center shadow-2xl"
-        initial={{ scale: 0.85, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        className="w-full max-w-sm rounded-3xl overflow-hidden"
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 250, damping: 22, mass: 0.8 }}
+        style={{
+          background: colors.surface,
+          backdropFilter: 'blur(30px)',
+          WebkitBackdropFilter: 'blur(30px)',
+          border: `1px solid ${colors.glassBorder}`,
+          boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+        }}
       >
-        <h2
-          className="text-2xl sm:text-3xl font-display tracking-wider mb-2"
-          style={{ fontFamily: fonts.display, color: winnerColor }}
-        >
-          {winnerData ? `${winnerData.name} Wins!` : 'Draw!'}
-        </h2>
-        <p className="text-text-muted text-xs sm:text-sm mb-6 sm:mb-8">
-          {winnerData
-            ? 'Critical mass achieved. The chain reaction is complete.'
-            : 'No orbs remain. The reaction fizzles.'}
-        </p>
-        <div className="flex flex-col gap-2 sm:gap-3">
-          <button
-            onClick={onRematch}
-            className="py-3 px-6 rounded-lg font-display tracking-wider text-sm bg-white/10 hover:bg-white/20 active:bg-white/25 text-text border border-white/20 transition-all touch-manipulation"
-          >
-            Rematch
-          </button>
-          <button
-            onClick={onNewGame}
-            className="py-3 px-6 rounded-lg text-sm text-text-muted hover:text-text active:text-text transition-colors touch-manipulation"
-          >
-            New Game
-          </button>
+        <div className="p-7 sm:p-8 text-center">
+          <motion.div
+            className="w-12 h-12 rounded-full mx-auto mb-4"
+            style={{
+              background: winnerPlayer
+                ? `linear-gradient(135deg, ${colors.playerGradients[wIdx][0]}, ${colors.playerGradients[wIdx][1]})`
+                : 'rgba(255,255,255,0.1)',
+              boxShadow: winnerPlayer ? `0 0 20px ${colors.playerGlow[wIdx]}` : 'none',
+            }}
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 15, delay: 0.1 }}
+          />
+
+          <h2 className="text-xl font-semibold tracking-tight mb-1" style={{ color: wColor }}>
+            {winnerPlayer ? `${winnerPlayer.name} Wins` : 'Draw'}
+          </h2>
+          <p className="text-sm mb-7" style={{ color: colors.textMuted }}>
+            {winnerPlayer
+              ? 'The chain reaction is complete.'
+              : 'No orbs remain.'}
+          </p>
+
+          <div className="flex flex-col gap-2.5">
+            <motion.button
+              onClick={onRematch}
+              className="w-full py-3 rounded-2xl text-sm font-medium transition-all"
+              whileTap={{ scale: 0.97 }}
+              style={{
+                background: 'rgba(255,255,255,0.1)',
+                color: colors.text,
+                border: `1px solid ${colors.glassBorderHover}`,
+              }}
+            >
+              Rematch
+            </motion.button>
+            <motion.button
+              onClick={onNewGame}
+              className="w-full py-3 rounded-2xl text-sm font-medium transition-all"
+              whileTap={{ scale: 0.97 }}
+              style={{ color: colors.textSecondary }}
+            >
+              New Game
+            </motion.button>
+          </div>
         </div>
       </motion.div>
     </div>
