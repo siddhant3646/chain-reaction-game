@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Player } from '@/lib/engine';
-import { colors, fonts } from '@/lib/design';
+import { colors } from '@/lib/design';
 
 interface GameOverProps {
   winner: Player | null;
@@ -14,12 +14,13 @@ interface GameOverProps {
 
 function Confetti({ color }: { color: string }) {
   const [pieces] = useState(() =>
-    Array.from({ length: 24 }, (_, i) => ({
+    Array.from({ length: 48 }, (_, i) => ({
       id: i,
-      x: 5 + Math.random() * 90,
-      delay: Math.random() * 1.5,
-      duration: 2 + Math.random() * 2,
-      s: 2 + (i % 4) * 2,
+      x: Math.random() * 100,
+      delay: Math.random() * 0.8,
+      duration: 1 + Math.random() * 1.5,
+      s: 2 + Math.random() * 3,
+      h: 1.2 + Math.random() * 2.4,
       r: Math.random() > 0.5 ? '50%' : '1px',
     }))
   );
@@ -32,21 +33,21 @@ function Confetti({ color }: { color: string }) {
           className="absolute"
           style={{
             left: `${p.x}%`,
-            top: -8,
+            top: -10,
             width: p.s,
-            height: p.s * 1.6,
+            height: p.s * p.h,
             background: color,
-            borderRadius: p.r as any,
+            borderRadius: p.r as '50%' | '1px',
           }}
+          initial={{ y: -10, rotate: 0, opacity: 1 }}
           animate={{
             y: [0, typeof window !== 'undefined' ? window.innerHeight + 20 : 800],
-            rotate: [0, 540 + p.id * 30],
-            opacity: [1, 0.6, 0],
+            rotate: [0, 360 + p.id * 40],
+            opacity: [1, 0.8, 0],
           }}
           transition={{
             duration: p.duration,
             delay: p.delay,
-            repeat: Infinity,
             ease: [0.16, 1, 0.3, 1],
           }}
         />
@@ -56,17 +57,18 @@ function Confetti({ color }: { color: string }) {
 }
 
 export function GameOver({ winner, players, onRematch, onNewGame }: GameOverProps) {
+  const reducedMotion = useReducedMotion();
   const winnerPlayer = winner ? players.find(p => p.id === winner.id) || winner : null;
   const wIdx = winnerPlayer ? players.indexOf(winnerPlayer) % colors.player.length : -1;
   const wColor = wIdx >= 0 ? colors.player[wIdx] : colors.text;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-5" style={{ background: 'rgba(0,0,0,0.6)' }}>
-      {winnerPlayer && <Confetti color={wColor} />}
+      {winnerPlayer && !reducedMotion && <Confetti color={wColor} />}
 
       <motion.div
         className="w-full max-w-sm rounded-3xl overflow-hidden"
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        initial={{ opacity: 0, scale: 0.85, y: 30 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 250, damping: 22, mass: 0.8 }}
         style={{
@@ -86,8 +88,8 @@ export function GameOver({ winner, players, onRematch, onNewGame }: GameOverProp
                 : 'rgba(255,255,255,0.1)',
               boxShadow: winnerPlayer ? `0 0 20px ${colors.playerGlow[wIdx]}` : 'none',
             }}
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
             transition={{ type: 'spring', stiffness: 300, damping: 15, delay: 0.1 }}
           />
 

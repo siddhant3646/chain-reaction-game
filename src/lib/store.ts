@@ -16,6 +16,8 @@ interface LocalGameStore {
   preMoveCells: Cell[] | null;
   movingPlayerId: PlayerId | null;
   clickedIndex: number;
+  illegalMoveIndex: number;
+  illegalMoveAttempt: number;
 
   initGame: (config: GameConfig) => void;
   placeOrb: (cellIndex: number) => void;
@@ -36,10 +38,12 @@ export const useLocalGameStore = create<LocalGameStore>((set, get) => ({
   preMoveCells: null,
   movingPlayerId: null,
   clickedIndex: -1,
+  illegalMoveIndex: -1,
+  illegalMoveAttempt: 0,
 
   initGame: (config: GameConfig) => {
     const state = createInitialGameState(config);
-    set({ state, config, waves: [], currentWave: 0, animating: false, eliminatedToast: null, winner: null, preMoveCells: null, movingPlayerId: null, clickedIndex: -1 });
+    set({ state, config, waves: [], currentWave: 0, animating: false, eliminatedToast: null, winner: null, preMoveCells: null, movingPlayerId: null, clickedIndex: -1, illegalMoveIndex: -1, illegalMoveAttempt: 0 });
   },
 
   placeOrb: (cellIndex: number) => {
@@ -64,7 +68,14 @@ export const useLocalGameStore = create<LocalGameStore>((set, get) => ({
         clickedIndex: result.waves.length > 0 ? cellIndex : -1,
       });
     } catch {
-      // ignore invalid moves
+      const { illegalMoveAttempt } = get();
+      set({
+        illegalMoveIndex: cellIndex,
+        illegalMoveAttempt: illegalMoveAttempt + 1,
+      });
+      setTimeout(() => {
+        set({ illegalMoveIndex: -1 });
+      }, 300);
     }
   },
 
@@ -83,5 +94,5 @@ export const useLocalGameStore = create<LocalGameStore>((set, get) => ({
   },
 
   clearEliminatedToast: () => set({ eliminatedToast: null }),
-  reset: () => set({ state: null, config: null, waves: [], animating: false, eliminatedToast: null, winner: null, preMoveCells: null, movingPlayerId: null, clickedIndex: -1 }),
+  reset: () => set({ state: null, config: null, waves: [], animating: false, eliminatedToast: null, winner: null, preMoveCells: null, movingPlayerId: null, clickedIndex: -1, illegalMoveIndex: -1, illegalMoveAttempt: 0 }),
 }));

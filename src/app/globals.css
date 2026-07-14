@@ -44,9 +44,11 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  /* Catch only CSS-based animations — Motion JS animations are handled
+     by the useReducedMotion hook at the component level */
+  [style*="animation"],
+  [class*="animate-"] {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
   }
 }

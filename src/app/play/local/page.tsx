@@ -1,49 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Board } from '@/components/board/Board';
 import { LocalSetup } from '@/components/lobby/LocalSetup';
 import { GameOver } from '@/components/lobby/GameOver';
+import { PlayerPill } from '@/components/ui/PlayerPill';
 import { useLocalGameStore } from '@/lib/store';
 import { GameConfig } from '@/lib/engine';
-import { colors, fonts } from '@/lib/design';
-
-function PlayerPill({ name, color, glow, isActive, isEliminated }: {
-  name: string; color: string; glow: string; isActive: boolean; isEliminated: boolean;
-}) {
-  return (
-    <motion.div
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium whitespace-nowrap transition-all"
-      layout
-      style={{
-        background: isActive ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)',
-        color: isEliminated ? colors.textMuted : isActive ? colors.text : colors.textSecondary,
-        border: `1px solid ${isActive ? colors.glassBorderHover : 'transparent'}`,
-        boxShadow: isActive ? `0 0 14px ${glow}` : 'none',
-        opacity: isEliminated ? 0.3 : 1,
-        textDecoration: isEliminated ? 'line-through' : 'none',
-      }}
-    >
-      <span
-        className="w-2 h-2 rounded-full flex-shrink-0"
-        style={{
-          background: `linear-gradient(135deg, ${color}, ${color}dd)`,
-          boxShadow: isActive ? `0 0 6px ${glow}` : 'none',
-        }}
-      />
-      <span className="truncate max-w-[56px] sm:max-w-[72px]">{name}</span>
-      {isActive && <span className="text-[8px] opacity-60 ml-0.5">●</span>}
-    </motion.div>
-  );
-}
+import { colors } from '@/lib/design';
 
 export default function LocalPlayPage() {
   const {
     state, config, waves, currentWave, animating,
     eliminatedToast, winner,
     preMoveCells, movingPlayerId, clickedIndex,
-    initGame, placeOrb, advanceWave, skipAnimations, reset,
+    illegalMoveIndex, illegalMoveAttempt,
+    initGame, placeOrb, advanceWave, skipAnimations, clearEliminatedToast, reset,
   } = useLocalGameStore();
 
   const [showSetup, setShowSetup] = useState(true);
@@ -51,6 +24,12 @@ export default function LocalPlayPage() {
   const handleStart = (c: GameConfig) => { initGame(c); setShowSetup(false); };
   const handleRematch = () => { if (config) initGame(config); };
   const handleNewGame = () => { reset(); setShowSetup(true); };
+
+  useEffect(() => {
+    if (!eliminatedToast) return;
+    const timer = setTimeout(clearEliminatedToast, 2000);
+    return () => clearTimeout(timer);
+  }, [eliminatedToast, clearEliminatedToast]);
 
   if (showSetup) {
     return (
@@ -83,6 +62,7 @@ export default function LocalPlayPage() {
       <AnimatePresence>
         {eliminatedToast && (
           <motion.div
+            key={eliminatedToast}
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -146,6 +126,8 @@ export default function LocalPlayPage() {
         onPlace={placeOrb}
         onAdvanceWave={advanceWave}
         onSkipAnimations={skipAnimations}
+        illegalMoveIndex={illegalMoveIndex}
+        illegalMoveAttempt={illegalMoveAttempt}
       />
 
       {state.status === 'finished' && winnerPlayer && (
