@@ -6,7 +6,7 @@ import { v4 as uuid } from 'uuid';
 import { motion } from 'motion/react';
 import { ref, set, get, onValue, off } from 'firebase/database';
 import { getFirebaseDb } from '@/lib/firebase/client';
-import { GameState, Wave, Cell, PlayerId, applyMove, isValidMove } from '@/lib/engine';
+import { GameState, Wave, Cell, PlayerId, isValidMove } from '@/lib/engine';
 import { Board } from '@/components/board/Board';
 import { GameOver } from '@/components/lobby/GameOver';
 import { PlayerPill } from '@/components/ui/PlayerPill';
@@ -152,13 +152,21 @@ export default function RoomPage() {
       return;
     }
 
-    setPreMoveCells(gameState.cells);
+    const cellsBeforeMove = gameState.cells;
+
+    // Optimistic update: increment target cell count locally for instant feedback
+    // Do NOT run resolveExplosions — that's the server's job in online mode
+    setGameState(prev => {
+      if (!prev) return prev;
+      const newCells = prev.cells.map((c, i) =>
+        i === cellIndex ? { count: c.count + 1, owner: playerId } : { ...c }
+      );
+      return { ...prev, cells: newCells };
+    });
+
+    setPreMoveCells(cellsBeforeMove);
     setMovingPlayerId(playerId);
     setClickedIndex(cellIndex);
-
-    const result = applyMove(gameState, cellIndex, playerId);
-    setGameState(result.state);
-    if (result.waves.length > 0) { setWaves(result.waves); setCurrentWave(0); setAnimating(true); }
 
     setSubmitting(true);
     try {
@@ -167,10 +175,12 @@ export default function RoomPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomCode: code, playerId, cellIndex }),
       });
+
+      const data = await res.json();
+
       if (!res.ok) {
-        const errorData = await res.json();
-        console.error('Move failed:', errorData);
-        setError(`Move failed: ${errorData.error || 'Unknown error'}`);
+        console.error('Move failed:', data);
+        setError(`Move failed: ${data.error || 'Unknown error'}`);
         setTimeout(() => setError(''), 3000);
         const db = getFirebaseDb();
         if (db) {
@@ -180,6 +190,13 @@ export default function RoomPage() {
             if (s.cells) s.cells = normalizeCells(s.cells) as any;
             setGameState(s);
           }
+        }
+      } else {
+        // Use server-computed waves for explosion animation
+        if (data.waves?.length > 0) {
+          setWaves(data.waves);
+          setCurrentWave(0);
+          setAnimating(true);
         }
       }
     } catch (err) {

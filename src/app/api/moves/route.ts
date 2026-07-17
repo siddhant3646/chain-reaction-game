@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase/admin';
-import { GameState, applyMove, isValidMove } from '@/lib/engine';
+import { GameState, Wave, PlayerId, applyMove, isValidMove } from '@/lib/engine';
+
+function normalizeCells(cells: { count: number; owner?: string | null }[]) {
+  return cells.map(c => ({ count: c.count ?? 0, owner: c.owner ?? null }));
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,94 +21,101 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 500 });
     }
 
-    const snapshot = await db.ref(`rooms/${roomCode}`).once('value');
-    if (!snapshot.exists()) {
-      console.error('[API] Room not found:', roomCode);
-      return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-    }
+    // Use a Firebase transaction to atomically read-modify-write the game state.
+    // This prevents the race condition where two concurrent requests read the same
+    // stale state and one player's move gets silently overwritten.
+    let outputWaves: Wave[] = [];
+    let outputEliminated: PlayerId[] = [];
+    let outputWinner: PlayerId | null = null;
+    let abortReason: string | null = null;
 
-    const gameState = snapshot.val().board_state as GameState;
+    await db.ref(`rooms/${roomCode}/board_state`).transaction((current) => {
+      if (current === null) {
+        abortReason = 'Room not found';
+        return; // abort
+      }
 
-    // Normalize cells - Firebase RTDB strips null values, so owner may be undefined
-    gameState.cells = gameState.cells.map(c => ({
-      count: c.count ?? 0,
-      owner: c.owner ?? null,
-    }));
+      const raw = current as Record<string, unknown>;
 
-    // Detailed logging for debugging
-    console.log('[API] Move request:', {
-      roomCode,
-      playerId,
-      cellIndex,
-      gameStatus: gameState.status,
-      currentPlayerIndex: gameState.currentPlayerIndex,
-      currentPlayerId: gameState.players[gameState.currentPlayerIndex]?.id,
-      totalPlayers: gameState.players.length,
-      cellsCount: gameState.cells.length,
-      targetCell: gameState.cells[cellIndex],
+      if (raw.status !== 'playing') {
+        abortReason = 'Game is not in progress';
+        return; // abort
+      }
+
+      const rawCurrentPlayerIndex = raw.currentPlayerIndex;
+      const rawPlayers = raw.players;
+      const rawCells = raw.cells;
+
+      if (
+        typeof rawCurrentPlayerIndex !== 'number' ||
+        !Array.isArray(rawPlayers) ||
+        !Array.isArray(rawCells)
+      ) {
+        abortReason = 'Invalid game state';
+        return; // abort
+      }
+
+      const currentPlayer = rawPlayers[rawCurrentPlayerIndex] as { id: string; eliminated: boolean } | undefined;
+      if (!currentPlayer) {
+        abortReason = 'Invalid game state';
+        return; // abort
+      }
+
+      if (currentPlayer.id !== playerId) {
+        abortReason = 'Not your turn';
+        return; // abort
+      }
+
+      if (currentPlayer.eliminated) {
+        abortReason = 'Player is eliminated';
+        return; // abort
+      }
+
+      if (cellIndex < 0 || cellIndex >= rawCells.length) {
+        abortReason = 'Invalid cell index';
+        return; // abort
+      }
+
+      const targetCell = rawCells[cellIndex] as { owner?: string | null; count: number } | undefined;
+      if (!targetCell) {
+        abortReason = 'Invalid cell index';
+        return; // abort
+      }
+
+      const owner = targetCell.owner ?? null;
+      if (owner != null && owner !== playerId) {
+        abortReason = 'Cell is owned by opponent';
+        return; // abort
+      }
+
+      // Reconstruct GameState from the raw transaction data
+      const gameState: GameState = {
+        ...raw as unknown as GameState,
+        cells: normalizeCells(rawCells as any),
+        players: rawPlayers as GameState['players'],
+      };
+
+      if (!isValidMove(gameState, cellIndex, playerId)) {
+        abortReason = 'Invalid move';
+        return; // abort
+      }
+
+      const result = applyMove(gameState, cellIndex, playerId);
+      outputWaves = result.waves;
+      outputEliminated = result.eliminated;
+      outputWinner = result.winner;
+      return result.state as unknown as Record<string, unknown>;
     });
 
-    if (gameState.status !== 'playing') {
-      console.error('[API] Game not in progress:', gameState.status);
-      return NextResponse.json({ error: 'Game is not in progress' }, { status: 400 });
+    if (abortReason) {
+      return NextResponse.json({ error: abortReason }, { status: 400 });
     }
-
-    const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-    if (!currentPlayer) {
-      console.error('[API] Current player not found at index:', gameState.currentPlayerIndex);
-      return NextResponse.json({ error: 'Invalid game state' }, { status: 500 });
-    }
-
-    if (currentPlayer.id !== playerId) {
-      console.error('[API] Not your turn:', {
-        expectedPlayerId: currentPlayer.id,
-        receivedPlayerId: playerId,
-      });
-      return NextResponse.json({ error: 'Not your turn' }, { status: 403 });
-    }
-
-    if (currentPlayer.eliminated) {
-      console.error('[API] Player is eliminated:', playerId);
-      return NextResponse.json({ error: 'Player is eliminated' }, { status: 403 });
-    }
-
-    if (cellIndex < 0 || cellIndex >= gameState.cells.length) {
-      console.error('[API] Cell index out of bounds:', {
-        cellIndex,
-        totalCells: gameState.cells.length,
-      });
-      return NextResponse.json({ error: 'Invalid cell index' }, { status: 400 });
-    }
-
-    const targetCell = gameState.cells[cellIndex];
-    if (targetCell.owner != null && targetCell.owner !== playerId) {
-      console.error('[API] Cell owned by opponent:', {
-        cellIndex,
-        cellOwner: targetCell.owner,
-        playerId,
-      });
-      return NextResponse.json({ error: 'Cell is owned by opponent' }, { status: 400 });
-    }
-
-    if (!isValidMove(gameState, cellIndex, playerId)) {
-      console.error('[API] isValidMove returned false:', {
-        cellIndex,
-        playerId,
-        cellOwner: targetCell.owner,
-        cellCount: targetCell.count,
-      });
-      return NextResponse.json({ error: 'Invalid move' }, { status: 400 });
-    }
-
-    const result = applyMove(gameState, cellIndex, playerId);
-
-    await db.ref(`rooms/${roomCode}/board_state`).set(result.state);
 
     return NextResponse.json({
       success: true,
-      waves: result.waves,
-      eliminated: result.eliminated,
-      winner: result.winner,
+      waves: outputWaves,
+      eliminated: outputEliminated,
+      winner: outputWinner,
     });
   } catch (err) {
     console.error('Move error:', err);

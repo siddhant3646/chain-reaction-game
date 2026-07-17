@@ -134,13 +134,17 @@ export function resolveExplosions(
     }
 
     for (const [idx, count] of newCounts) {
-      const owner = newOwners.get(idx) ?? working[idx].owner;
+      const owner = newOwners.has(idx) ? (newOwners.get(idx) as PlayerId | null) : working[idx].owner;
       working[idx].count = count;
       working[idx].owner = owner;
       updates.push({ index: idx, count, owner });
     }
 
     waves.push({ explosions: exploding, updates });
+  }
+
+  for (const cell of working) {
+    if (cell.count === 0) cell.owner = null;
   }
 
   return { finalCells: working, waves };

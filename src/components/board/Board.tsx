@@ -211,8 +211,7 @@ export function Board({
         </motion.button>
       )}
 
-      <motion.div
-        layout
+      <div
         className="relative"
         role="grid"
         aria-label="Game board"
@@ -225,7 +224,6 @@ export function Board({
             linear-gradient(to bottom, ${colors.gridLine} 1px, transparent 1px)
           `,
           backgroundSize: `${cellSize}px ${cellSize}px`,
-          transition: 'width 0.2s ease, height 0.2s ease',
         }}
       >
         {boardTravelingOrbs.map(orb => (
@@ -271,7 +269,7 @@ export function Board({
             </div>
           );
         })}
-      </motion.div>
+      </div>
     </div>
   );
 }

@@ -69,7 +69,7 @@ export function Cell({
     <motion.button
       onClick={() => isPlayable && onPlace(index)}
       disabled={!isPlayable}
-      className="relative outline-none select-none"
+      className="relative outline-none select-none overflow-hidden"
       style={{
         width: cellSize,
         height: cellSize,
@@ -142,7 +142,7 @@ export function Cell({
 
       {isNearCritical && (
         <motion.div
-          className="absolute inset-0 rounded-full pointer-events-none"
+          className="absolute inset-0 rounded-full pointer-events-none overflow-hidden"
           style={{
             boxShadow: `inset 0 0 ${Math.max(cellSize * 0.2, 3)}px ${playerColor}`,
             borderRadius: radius,
@@ -151,11 +151,10 @@ export function Cell({
           transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
         >
           <div
-            className="absolute inset-[-2px] rounded-full opacity-40"
+            className="absolute inset-0 rounded-full"
             style={{
               border: `1px solid ${playerColor}`,
-              boxShadow: `0 0 8px ${playerColor}60`,
-              borderRadius: radius + 2,
+              borderRadius: radius,
             }}
           />
         </motion.div>
